@@ -1,0 +1,17 @@
+# Binaries
+/brod
+/bin/
+*.exe
+*.out
+
+# Go
+/vendor/
+*.test
+coverage.out
+
+# Local env / editor
+.env
+.env.local
+.DS_Store
+.idea/
+.vscode/
