@@ -31,7 +31,8 @@ import (
 //go:embed sample_snapshot.json
 var sampleSnapshot []byte
 
-const version = "0.2.0"
+// version is overridden at release time via -ldflags "-X main.version=...".
+var version = "dev"
 
 const saasPointer = "→ See this continuously, attributed per team, at https://brod.sh — read-only, metadata-only, fixes ship as PRs."
 
@@ -46,6 +47,8 @@ func main() {
 		err = cmdScan(os.Args[2:])
 	case "collect":
 		err = cmdCollect(os.Args[2:])
+	case "cost":
+		err = cmdCost(os.Args[2:])
 	case "sample":
 		err = cmdSample(os.Args[2:])
 	case "version", "--version", "-v":
@@ -69,12 +72,16 @@ func usage() {
 USAGE
   brod scan [--snapshot FILE | --bootstrap HOSTS] [--cost EUR] [--provider P] [--json] [--verbose]
   brod collect --bootstrap HOSTS [--out FILE] [connection flags]
+  brod cost [--snapshot FILE | --bootstrap HOSTS] [--cost EUR] [--team 'regex=Team']...
   brod sample        print a sample snapshot JSON (the input format)
   brod version
 
 scan reads a metadata snapshot and prints a euro-ranked waste report. Source it
 from a JSON file (--snapshot), a live cluster (--bootstrap, read-only), or — with
 neither and nothing on stdin — the built-in demo snapshot.
+
+cost allocates the cluster's monthly € across topics (and --team groups) using the
+weighted 40/40/20 model. Every figure carries a basis label.
 
 collect connects read-only to a live cluster and writes a metadata snapshot JSON
 (round-trips with 'brod scan --snapshot'). brod NEVER produces or consumes: it

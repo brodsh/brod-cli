@@ -6,7 +6,10 @@ import "fmt"
 // sure a topic is truly dead. From a single snapshot we approximate: ~zero
 // bytes-in AND no active consumers AND retained > threshold. Labeled as an
 // approximation, confidence low — the SaaS confirms it over 30d before booking.
-const r1Version = 1
+//
+// v2: skips Kafka Streams internal topics (-changelog/-repartition) — those are
+// R8's domain, so the two rules never bill the same orphaned topic.
+const r1Version = 2
 
 // R1Config holds R1 thresholds.
 type R1Config struct {
@@ -22,6 +25,9 @@ func evalR1(ctx evalCtx) []Finding {
 	cfg := ctx.cfg.R1
 	var out []Finding
 	for _, t := range ctx.snap.Topics {
+		if isStreamsInternal(t.Name) {
+			continue // R8 owns orphaned -changelog/-repartition topics
+		}
 		if t.BytesInPerSec > cfg.MaxBytesInPerSec {
 			continue
 		}

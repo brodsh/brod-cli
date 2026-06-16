@@ -14,10 +14,13 @@ type RuleConfig struct {
 	Now      time.Time
 	Disabled map[string]bool
 	R1       R1Config
+	R2       R2Config
 	R3       R3Config
 	R4       R4Config
 	R5       R5Config
 	R6       R6Config
+	R7       R7Config
+	R8       R8Config
 }
 
 // DefaultConfig returns the default thresholds with the evaluation time set.
@@ -26,10 +29,13 @@ func DefaultConfig(now time.Time) RuleConfig {
 		Now:      now,
 		Disabled: map[string]bool{},
 		R1:       defaultR1(),
+		R2:       defaultR2(),
 		R3:       defaultR3(),
 		R4:       defaultR4(),
 		R5:       defaultR5(),
 		R6:       defaultR6(),
+		R7:       defaultR7(),
+		R8:       defaultR8(),
 	}
 }
 
@@ -52,10 +58,13 @@ type rule struct {
 func registry() []rule {
 	return []rule{
 		{"R1", true, evalR1},
+		{"R2", true, evalR2},
 		{"R3", true, evalR3},
 		{"R4", true, evalR4},
 		{"R5", true, evalR5},
 		{"R6", true, evalR6},
+		{"R7", true, evalR7},
+		{"R8", true, evalR8},
 	}
 }
 

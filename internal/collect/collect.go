@@ -155,6 +155,7 @@ func build(ctx context.Context, r reader, opts Options, sleep sleepFunc) (rules.
 			CompressionType:   strOr(cfg.CompressionType, "producer"),
 			CleanupPolicy:     strOr(cfg.CleanupPolicy, "delete"),
 			RetainedBytes:     retained,
+			PartitionBytes:    perPartitionBytes(logDirs[t.Name]),
 			EarliestOffset:    earliest,
 			LatestOffset:      latest,
 			// lag-TIME needs offset->timestamp history a single snapshot can't
@@ -226,6 +227,30 @@ func sumReplicaBytes(parts map[int32][]int64) int64 {
 		}
 	}
 	return total
+}
+
+// perPartitionBytes returns each partition's on-disk size (summed across its
+// replicas), ordered by partition id. Summing replicas scales every partition by
+// the same replication factor, so the distribution — which is all R7 (skew)
+// cares about — is preserved. Returns nil when no log-dir data is available.
+func perPartitionBytes(parts map[int32][]int64) []int64 {
+	if len(parts) == 0 {
+		return nil
+	}
+	pids := make([]int32, 0, len(parts))
+	for pid := range parts {
+		pids = append(pids, pid)
+	}
+	sort.Slice(pids, func(i, j int) bool { return pids[i] < pids[j] })
+	out := make([]int64, 0, len(pids))
+	for _, pid := range pids {
+		var sum int64
+		for _, b := range parts[pid] {
+			sum += b
+		}
+		out = append(out, sum)
+	}
+	return out
 }
 
 // offsetSpan returns min start across partitions and max end across partitions.

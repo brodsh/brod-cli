@@ -1,0 +1,49 @@
+# GoReleaser config for the brod CLI.
+#   https://goreleaser.com
+# Archive names match what install.sh expects: brod_<version>_<os>_<arch>.tar.gz
+version: 2
+
+project_name: brod
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: brod
+    main: ./cmd/brod
+    binary: brod
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: brod
+    ids: [brod]
+    formats: [tar.gz]
+    # → brod_0.3.0_linux_amd64.tar.gz  (matches install.sh)
+    name_template: "brod_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+release:
+  github:
+    owner: brodsh
+    name: brod-cli
+
+changelog:
+  use: github
+  sort: asc
