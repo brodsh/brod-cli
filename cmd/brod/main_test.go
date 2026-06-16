@@ -31,6 +31,29 @@ func TestEmbeddedSampleParsesAndScans(t *testing.T) {
 	}
 }
 
+// TestCollectSnapshotRoundTrips proves a snapshot encoded the way `brod collect`
+// writes it deserializes back through the same rules.Snapshot scan reads — so
+// `brod collect --out x.json` then `brod scan --snapshot x.json` is coherent.
+func TestCollectSnapshotRoundTrips(t *testing.T) {
+	var snap rules.Snapshot
+	if err := json.Unmarshal(sampleSnapshot, &snap); err != nil {
+		t.Fatal(err)
+	}
+	// Encode exactly as cmdCollect does (MarshalIndent), then re-decode.
+	data, err := json.MarshalIndent(snap, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back rules.Snapshot
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatalf("collect output does not round-trip through scan: %v", err)
+	}
+	if back.Cluster != snap.Cluster || len(back.Topics) != len(snap.Topics) {
+		t.Errorf("round-trip mismatch: cluster %v vs %v, topics %d vs %d",
+			back.Cluster, snap.Cluster, len(back.Topics), len(snap.Topics))
+	}
+}
+
 // TestReportShowsBasisAndPointer guards the two non-negotiables in the rendered
 // output: a basis section and the SaaS funnel pointer.
 func TestReportShowsBasisAndPointer(t *testing.T) {

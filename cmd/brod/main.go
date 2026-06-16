@@ -13,6 +13,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -30,7 +31,7 @@ import (
 //go:embed sample_snapshot.json
 var sampleSnapshot []byte
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 const saasPointer = "→ See this continuously, attributed per team, at https://brod.sh — read-only, metadata-only, fixes ship as PRs."
 
@@ -43,6 +44,8 @@ func main() {
 	switch os.Args[1] {
 	case "scan":
 		err = cmdScan(os.Args[2:])
+	case "collect":
+		err = cmdCollect(os.Args[2:])
 	case "sample":
 		err = cmdSample(os.Args[2:])
 	case "version", "--version", "-v":
@@ -64,19 +67,35 @@ func usage() {
 	fmt.Fprint(os.Stderr, `brod — read-only Kafka FinOps CLI (brod.sh)
 
 USAGE
-  brod scan [--snapshot FILE] [--cost EUR] [--provider P] [--json] [--verbose]
+  brod scan [--snapshot FILE | --bootstrap HOSTS] [--cost EUR] [--provider P] [--json] [--verbose]
+  brod collect --bootstrap HOSTS [--out FILE] [connection flags]
   brod sample        print a sample snapshot JSON (the input format)
   brod version
 
-scan reads a metadata snapshot (JSON) and prints a euro-ranked waste report.
-With no --snapshot and nothing on stdin, it runs the built-in demo snapshot.
+scan reads a metadata snapshot and prints a euro-ranked waste report. Source it
+from a JSON file (--snapshot), a live cluster (--bootstrap, read-only), or — with
+neither and nothing on stdin — the built-in demo snapshot.
 
-FLAGS
+collect connects read-only to a live cluster and writes a metadata snapshot JSON
+(round-trips with 'brod scan --snapshot'). brod NEVER produces or consumes: it
+issues only Admin/Describe/Metadata/ListOffsets/OffsetFetch requests.
+
+SCAN/REPORT FLAGS
   --snapshot FILE   snapshot JSON file ('-' for stdin)
   --cost EUR        cluster monthly cost in € (enables derived, not assumed, rates)
   --provider P      confluent | msk | self  (default: from snapshot, else self)
   --json            emit findings as JSON
   --verbose         show remediation (config diff) per finding
+
+LIVE CONNECTION FLAGS (scan --bootstrap / collect)
+  --bootstrap H     comma-separated bootstrap servers (host:port)
+  --tls             use TLS
+  --sasl-mechanism  plain | scram-sha-256 | scram-sha-512
+  --user / --pass   SASL creds (or env BROD_KAFKA_USER / BROD_KAFKA_PASS)
+  --cluster-name N  label for the snapshot
+  --sample-window D throughput sampling window (default 30s; 0 = no estimate)
+  --require-readonly  fail closed on detectable write/topic-READ ACLs
+  --include-internal  include internal topics (e.g. __consumer_offsets)
 `)
 }
 
@@ -92,18 +111,33 @@ func cmdScan(argv []string) error {
 	provider := fs.String("provider", "", "confluent | msk | self")
 	asJSON := fs.Bool("json", false, "emit findings as JSON")
 	verbose := fs.Bool("verbose", false, "show remediation per finding")
+	cf := registerConnectFlags(fs)
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
 
-	raw, usedDemo, err := readSnapshot(*snapPath)
-	if err != nil {
-		return err
-	}
-
-	var snap rules.Snapshot
-	if err := json.Unmarshal(raw, &snap); err != nil {
-		return fmt.Errorf("parsing snapshot: %w", err)
+	var (
+		snap     rules.Snapshot
+		usedDemo bool
+	)
+	if *cf.bootstrap != "" {
+		// Live mode: collect from the cluster in-memory, then run rules.
+		ctx, cancel := context.WithTimeout(context.Background(), collectTimeout(*cf.sampleWindow))
+		defer cancel()
+		s, err := connectAndCollect(ctx, cf)
+		if err != nil {
+			return err
+		}
+		snap = s
+	} else {
+		raw, demo, err := readSnapshot(*snapPath)
+		if err != nil {
+			return err
+		}
+		usedDemo = demo
+		if err := json.Unmarshal(raw, &snap); err != nil {
+			return fmt.Errorf("parsing snapshot: %w", err)
+		}
 	}
 
 	prov := *provider

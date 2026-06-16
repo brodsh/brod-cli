@@ -26,7 +26,11 @@ func TestNoMessageConsumptionPath(t *testing.T) {
 		regexp.MustCompile(`\bConsumePartition\b`),
 		regexp.MustCompile(`\bReadMessage\b`),
 		regexp.MustCompile(`\bFetchMessage\b`),
-		regexp.MustCompile(`\bPollFetches\b`),
+		regexp.MustCompile(`\bPollFetches\b`),  // franz-go consume entrypoint
+		regexp.MustCompile(`\bPollRecords\b`),  // franz-go consume entrypoint
+		regexp.MustCompile(`\bConsumeTopics\b`), // kgo.ConsumeTopics option = configures a consumer
+		regexp.MustCompile(`\bConsumePartitions\b`),
+		regexp.MustCompile(`\bConsumerGroup\b`), // kgo.ConsumerGroup option = joins a group to consume
 		regexp.MustCompile(`\bsarama\.NewConsumer`),
 		regexp.MustCompile(`kafka\.NewReader`), // segmentio/kafka-go reader = consumer
 	}
@@ -43,6 +47,44 @@ func TestNoMessageConsumptionPath(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestKafkaPackageExposesNoConsumerEntrypoint asserts, at the API level, that
+// the kafka package exports no method/function whose name implies consuming
+// message data. This complements the repo-wide text scan above: even if a future
+// edit introduced a "Consume"/"Fetch"/"Poll"/"Read" method, this fails the build.
+func TestKafkaPackageExposesNoConsumerEntrypoint(t *testing.T) {
+	root := repoRoot(t)
+	pkgDir := filepath.Join(root, "internal", "kafka")
+
+	// Names that, as an exported identifier in this package, would imply a
+	// message-consumption capability. (Read-only metadata methods are named
+	// Brokers/Topics/Offsets/Groups/etc. — none of these.)
+	bad := regexp.MustCompile(`^(Consume|Poll|Fetch[A-Z].*Records|ReadMessage|ReadRecord)`)
+
+	fset := token.NewFileSet()
+	entries, err := os.ReadDir(pkgDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, filepath.Join(pkgDir, e.Name()), nil, 0)
+		if err != nil {
+			t.Fatalf("parsing %s: %v", e.Name(), err)
+		}
+		for _, decl := range f.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || !fn.Name.IsExported() {
+				continue
+			}
+			if bad.MatchString(fn.Name.Name) {
+				t.Errorf("kafka package exports %q — looks like a message-consumption entrypoint; read-only/metadata-only pillar violated", fn.Name.Name)
+			}
+		}
+	}
 }
 
 // --- helpers shared by tests in this package ---
@@ -103,5 +145,3 @@ func walkGoFiles(t *testing.T, root string, fn func(path string, src []byte)) {
 		t.Fatal(err)
 	}
 }
-
-var _ = ast.Print // keep go/ast imported for future AST-level guards
